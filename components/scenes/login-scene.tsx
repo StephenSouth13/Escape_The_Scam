@@ -186,7 +186,7 @@ export default function LoginScene({ onStart }: LoginSceneProps) {
 
                 <div className="max-w-md mx-auto space-y-4 pt-4">
                   <div className="space-y-2">
-                    <label className="text-sm text-neon-green uppercase tracking-wider">Tên HackBoy của bạn:</label>
+                    <label className="text-sm text-neon-green uppercase tracking-wider">Họ và Tên của bạn:</label>
                     <Input
                       type="text"
                       value={name}

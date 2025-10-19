@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { motion, AnimatePresence } from "framer-motion"
-import type { Question } from "@/lib/level-data"
+import type { Question } from "@/lib/level-data" // Giả định type này tồn tại
 
 interface ChatQuizPopupProps {
   question: Question
@@ -17,68 +17,90 @@ interface Message {
   icon: string
 }
 
+// Hàm helper để tạo độ trễ
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
 export default function ChatQuizPopup({ question, onAnswer }: ChatQuizPopupProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [showAnswers, setShowAnswers] = useState(false)
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null)
   const [showExplanation, setShowExplanation] = useState(false)
 
+  // Cần thêm ref để quản lý timer của câu trả lời, đảm bảo chỉ gọi onAnswer một lần
+  const [answerTimer, setAnswerTimer] = useState<NodeJS.Timeout | null>(null);
+
+  // Tái cấu trúc logic hiển thị tin nhắn vào một hàm async/await
   useEffect(() => {
-    // Initial messages sequence
-    const sequence = [
-      {
-        id: 1,
-        sender: "villain" as const,
-        text: question.scenario,
-        icon: question.villainIcon,
-        delay: 500,
-      },
-    ]
-
-    // Randomly add Linh's cry for help (30% chance)
-    if (Math.random() < 0.3) {
-      sequence.push({
-        id: 2,
-        sender: "linh" as const,
-        text: "Giúp tôi với! Tôi đang bị giam ở đây... Hãy trả lời đúng!",
-        icon: "👧",
-        delay: 2000,
-      })
+    // Reset trạng thái khi question thay đổi
+    setMessages([])
+    setShowAnswers(false)
+    setSelectedAnswer(null)
+    setShowExplanation(false)
+    if (answerTimer) {
+      clearTimeout(answerTimer);
+      setAnswerTimer(null);
     }
+    
+    let isMounted = true;
 
-    sequence.push({
-      id: 3,
-      sender: "system" as const,
-      text: question.title,
-      icon: "⚠️",
-      delay: sequence.length > 1 ? 3500 : 2000,
-    })
+    const runSequence = async () => {
+      // 1. Gửi tin nhắn kịch bản (Villain)
+      await delay(500);
+      if (!isMounted) return;
+      setMessages([{ id: 1, sender: "villain", text: question.scenario, icon: question.villainIcon }]);
 
-    // Add messages with delays
-    sequence.forEach((msg) => {
-      setTimeout(() => {
-        setMessages((prev) => [...prev, msg])
-      }, msg.delay)
-    })
+      // 2. Gửi tin nhắn Linh (30% chance)
+      const shouldShowLinh = Math.random() < 0.3;
+      if (shouldShowLinh) {
+        await delay(1500);
+        if (!isMounted) return;
+        setMessages(prev => [...prev, { id: 2, sender: "linh", text: "Giúp tôi với! Tôi đang bị giam ở đây... Hãy trả lời đúng!", icon: "👧" }]);
+      }
 
-    // Show answers after all messages
-    setTimeout(
-      () => {
-        setShowAnswers(true)
-      },
-      sequence[sequence.length - 1].delay + 1000,
-    )
-  }, [question])
+      // 3. Gửi tin nhắn hệ thống (Cảnh báo/Tiêu đề câu hỏi)
+      await delay(1500); // Đợi thêm 1.5s sau tin nhắn cuối cùng (dù là villain hay linh)
+      if (!isMounted) return;
+      setMessages(prev => [...prev, { id: 3, sender: "system", text: question.title, icon: "⚠️" }]);
+
+      // 4. Hiển thị nút trả lời
+      await delay(1000);
+      if (!isMounted) return;
+      setShowAnswers(true);
+    };
+
+    runSequence();
+
+    // Cleanup function: Dừng sequence nếu component unmount hoặc question thay đổi
+    return () => {
+      isMounted = false;
+    };
+  }, [question]); // Dependencies: Chỉ chạy lại khi câu hỏi thay đổi
 
   const handleAnswerClick = (index: number) => {
+    // Ngăn chặn việc bấm nhiều lần
+    if (selectedAnswer !== null) return; 
+
     setSelectedAnswer(index)
     setShowExplanation(true)
 
-    // Show explanation for 3 seconds, then close
-    setTimeout(() => {
+    // Thiết lập timer cho việc chuyển màn hình/cấp độ
+    const timer = setTimeout(() => {
       onAnswer(index === question.correctAnswer)
     }, 4000)
+    
+    setAnswerTimer(timer);
   }
+
+  // Thêm useEffect cleanup cho answerTimer
+  useEffect(() => {
+    return () => {
+      if (answerTimer) {
+        clearTimeout(answerTimer);
+      }
+    };
+  }, [answerTimer]);
+  
+  //... (Phần return JSX giữ nguyên)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 backdrop-blur-md p-4">

@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import TypewriterText from "@/components/typewriter-text"
-import type { GameState } from "@/app/page"
+import type { GameState } from "@/app/page" // Đảm bảo import đúng
 import { AudioManager } from "@/lib/audio-manager"
 import { CheckCircle2, XCircle } from "lucide-react"
 
@@ -19,6 +19,9 @@ export default function Level1Scene({ gameState, onComplete, updateGameState }: 
   const [selectedEmail, setSelectedEmail] = useState<number | null>(null)
   const [showResult, setShowResult] = useState(false)
   const [timeLeft, setTimeLeft] = useState(60)
+
+  // useRef để quản lý Timer chuyển màn, giúp cleanup an toàn hơn
+  const completeTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   const emails = [
     {
@@ -47,14 +50,44 @@ export default function Level1Scene({ gameState, onComplete, updateGameState }: 
     },
   ]
 
+  // === LOGIC XỬ LÝ CHUYỂN MÀN AN TOÀN (Ngăn lỗi "rào chắn") ===
+  const handleComplete = useCallback((success: boolean) => {
+    // 1. Xóa timer cũ nếu có (Ngăn race condition)
+    if (completeTimerRef.current) {
+      clearTimeout(completeTimerRef.current)
+    }
+
+    // 2. Thiết lập timer mới cho onComplete
+    const timer = setTimeout(() => {
+      onComplete(success)
+    }, 3000) // 3 giây để xem kết quả
+
+    completeTimerRef.current = timer
+  }, [onComplete])
+
+  // Cleanup cho Timer chuyển màn khi component bị unmount
+  useEffect(() => {
+    return () => {
+      if (completeTimerRef.current) {
+        clearTimeout(completeTimerRef.current)
+      }
+    }
+  }, [])
+  // ==========================================================
+
+
+  // Timer cho việc hiển thị thử thách
   useEffect(() => {
     const timer = setTimeout(() => setShowChallenge(true), 2000)
     return () => clearTimeout(timer)
   }, [])
 
+  // Timer đếm ngược
   useEffect(() => {
+    let interval: NodeJS.Timeout | null = null
+
     if (showChallenge && !showResult && timeLeft > 0) {
-      const timer = setInterval(() => {
+      interval = setInterval(() => {
         setTimeLeft((prev) => {
           if (prev <= 1) {
             handleTimeout()
@@ -63,41 +96,56 @@ export default function Level1Scene({ gameState, onComplete, updateGameState }: 
           return prev - 1
         })
       }, 1000)
-      return () => clearInterval(timer)
+    }
+
+    return () => {
+      if (interval) clearInterval(interval)
     }
   }, [showChallenge, showResult, timeLeft])
 
   const handleTimeout = () => {
+    if (showResult) return // Đã có kết quả, không làm gì nữa
+
     AudioManager.playError()
     setShowResult(true)
-    setTimeout(() => onComplete(false), 3000)
+    updateGameState({ lives: gameState.lives - 1 }) // Trừ mạng
+    handleComplete(false) // Chuyển màn sau 3s
   }
 
   const handleSelectEmail = (emailId: number) => {
+    if (showResult) return // Không cho chọn nếu đã có kết quả
     AudioManager.playClick()
     setSelectedEmail(emailId)
   }
 
   const handleSubmit = () => {
-    if (selectedEmail === null) return
+    if (selectedEmail === null || showResult) return
 
     const email = emails.find((e) => e.id === selectedEmail)
-    if (email?.isScam) {
+    const isCorrect = email?.isScam === true
+
+    setShowResult(true) // Hiển thị kết quả ngay lập tức
+
+    if (isCorrect) {
       AudioManager.playSuccess()
+      // Cập nhật skill
       updateGameState({
         skills: {
           ...gameState.skills,
           phishingDetection: gameState.skills.phishingDetection + 1,
         },
       })
-      setShowResult(true)
-      setTimeout(() => onComplete(true), 3000)
+      handleComplete(true) // Chuyển màn sau 3s
     } else {
       AudioManager.playError()
-      setShowResult(true)
-      setTimeout(() => onComplete(false), 3000)
+      // Giảm mạng sống
+      updateGameState({ lives: gameState.lives - 1 })
+      handleComplete(false) // Chuyển màn sau 3s
     }
   }
+
+  const minutes = Math.floor(timeLeft / 60)
+  const seconds = (timeLeft % 60).toString().padStart(2, "0")
 
   return (
     <div className="relative min-h-screen flex items-center justify-center p-4">
@@ -122,9 +170,9 @@ export default function Level1Scene({ gameState, onComplete, updateGameState }: 
           </div>
         </div>
 
-        <div className="glass-panel rounded px-6 py-3">
+        <div className={`glass-panel rounded px-6 py-3 transition-colors duration-500 ${timeLeft <= 10 ? 'bg-danger-red/20 border-danger-red' : ''}`}>
           <div className="text-2xl font-bold font-mono text-neon-cyan">
-            {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, "0")}
+            {minutes}:{seconds}
           </div>
         </div>
       </div>
@@ -216,8 +264,8 @@ export default function Level1Scene({ gameState, onComplete, updateGameState }: 
                       <XCircle className="w-16 h-16 text-danger-red mx-auto" />
                       <h3 className="text-2xl font-bold text-danger-red">SAI RỒI!</h3>
                       <p className="text-foreground/90">
-                        {selectedEmail === null
-                          ? "Hết thời gian! Bạn cần nhanh hơn."
+                        {selectedEmail === null || timeLeft === 0
+                          ? "Hết thời gian! Bạn cần nhanh hơn và đã bị mất mạng."
                           : "Đây không phải email lừa đảo. Bạn đã mất một mạng sống."}
                       </p>
                     </>

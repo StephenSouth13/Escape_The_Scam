@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react" // Thêm useCallback
 import LoginScene from "@/components/scenes/login-scene"
 import StoryScene from "@/components/scenes/story-scene"
 import PlatformerGame from "@/components/platformer-game"
@@ -18,18 +18,36 @@ export interface GameState {
   cyberIQ: number
   lives: number
   completedLevels: number[]
+  // ĐÃ SỬA: Chính tả phải là 'phishingDetection'
+  skills: {
+    phishingDetection: number // ĐÃ SỬA CHÍNH TẢ
+  }
+}
+
+// TÁCH HẰNG SỐ KHỞI TẠO ĐỂ DỄ DÀNG RESTART
+const INITIAL_GAME_STATE: GameState = {
+  playerName: "",
+  mssv: "",
+  currentScene: "login",
+  currentLevel: 1,
+  cyberIQ: 0,
+  lives: 3,
+  completedLevels: [],
+  // ĐÃ THÊM: Khởi tạo cho 'skills'
+  skills: {
+    phishingDetection: 0,
+  },
 }
 
 export default function GamePage() {
-  const [gameState, setGameState] = useState<GameState>({
-    playerName: "",
-    mssv: "",
-    currentScene: "login",
-    currentLevel: 1,
-    cyberIQ: 0,
-    lives: 3,
-    completedLevels: [],
-  })
+  // SỬ DỤNG HẰNG SỐ KHỞI TẠO
+  const [gameState, setGameState] = useState<GameState>(INITIAL_GAME_STATE)
+
+  // Hàm chuẩn hóa logic reset game
+  const resetGame = () => {
+    setGameState(INITIAL_GAME_STATE)
+    changeScene("login")
+  }
 
   useEffect(() => {
     // Initialize music on mount
@@ -45,11 +63,15 @@ export default function GamePage() {
     setGameState((prev) => ({ ...prev, ...updates }))
   }
 
-  const changeScene = (scene: GameScene) => {
+  // SỬ DỤNG useCallback VÀ THÊM LOGIC CHUYỂN NHẠC GỌN GÀNG HƠN
+  const changeScene = useCallback((scene: GameScene, nextLevel?: number) => {
     setGameState((prev) => ({ ...prev, currentScene: scene }))
 
+    MusicManager.stopAll() // Dừng nhạc cũ trước
+
     if (scene === "game") {
-      MusicManager.playLevelMusic(gameState.currentLevel)
+      const levelToPlay = nextLevel !== undefined ? nextLevel : gameState.currentLevel
+      MusicManager.playLevelMusic(levelToPlay)
     } else if (scene === "win") {
       MusicManager.playWinMusic()
     } else if (scene === "lose") {
@@ -57,7 +79,7 @@ export default function GamePage() {
     } else {
       MusicManager.playMenuMusic()
     }
-  }
+  }, [gameState.currentLevel]) // Thêm gameState.currentLevel vào dependencies
 
   const renderScene = () => {
     switch (gameState.currentScene) {
@@ -79,6 +101,7 @@ export default function GamePage() {
             onLevelComplete={(cyberIQGained) => {
               const newCyberIQ = gameState.cyberIQ + cyberIQGained
               const newCompletedLevels = [...gameState.completedLevels, gameState.currentLevel]
+              const nextLevel = gameState.currentLevel + 1
 
               if (gameState.currentLevel >= 4) {
                 // Beat final level
@@ -87,11 +110,12 @@ export default function GamePage() {
               } else {
                 // Move to next level
                 updateGameState({
-                  currentLevel: gameState.currentLevel + 1,
+                  currentLevel: nextLevel,
                   cyberIQ: newCyberIQ,
                   completedLevels: newCompletedLevels,
                 })
-                MusicManager.playLevelMusic(gameState.currentLevel + 1)
+                // Gọi changeScene với nextLevel để chơi nhạc đúng
+                changeScene("game", nextLevel)
               }
             }}
             onGameOver={() => {
@@ -104,33 +128,15 @@ export default function GamePage() {
         return (
           <WinScene
             gameState={gameState}
-            onRestart={() => {
-              setGameState({
-                playerName: "",
-                currentScene: "login",
-                currentLevel: 1,
-                cyberIQ: 0,
-                lives: 3,
-                completedLevels: [],
-              })
-              changeScene("login")
-            }}
+            // SỬ DỤNG HÀM RESET GỌN GÀNG
+            onRestart={resetGame}
           />
         )
       case "lose":
         return (
           <LoseScene
-            onRestart={() => {
-              setGameState({
-                playerName: "",
-                currentScene: "login",
-                currentLevel: 1,
-                cyberIQ: 0,
-                lives: 3,
-                completedLevels: [],
-              })
-              changeScene("login")
-            }}
+            // SỬ DỤNG HÀM RESET GỌN GÀNG
+            onRestart={resetGame}
           />
         )
       default:

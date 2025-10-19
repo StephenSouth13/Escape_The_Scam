@@ -9,7 +9,7 @@ import "./globals.css"
 export const metadata: Metadata = {
   title: "Escape The Scam - Trò Chơi Giáo Dục An Toàn Mạng",
   description: "Một trò chơi phiêu lưu giáo dục về nhận diện và tránh các loại lừa đảo trực tuyến",
-  generator: "v0.app",
+  generator: "quachthanhlong",
 }
 
 export default function RootLayout({
